@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openenv-vendor-onboarding-env"
+version = "0.1.0"
+description = "Vendor onboarding workflow environment for OpenEnv"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "openenv-core[core] @ git+https://github.com/meta-pytorch/OpenEnv.git@c719decf2b19175d5ca35301d58a14c83e985480",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.scripts]
+server = "vendor_onboarding_env.server.app:main"
+
+[tool.setuptools]
+include-package-data = true
+packages = ["vendor_onboarding_env", "vendor_onboarding_env.server"]
+package-dir = { "vendor_onboarding_env" = ".", "vendor_onboarding_env.server" = "server" }
+
+[tool.setuptools.package-data]
+vendor_onboarding_env = ["data/*.json"]
+
+[tool.pytest.ini_options]
+addopts = "-p no:cacheprovider"
+testpaths = ["tests"]

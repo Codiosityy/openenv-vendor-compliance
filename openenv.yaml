@@ -1,0 +1,12 @@
+spec_version: 1
+name: vendor_onboarding_env
+description: Deterministic vendor onboarding and compliance review workflow for agent evaluation.
+type: space
+runtime: fastapi
+app: server.app:app
+port: 7860
+tags:
+  - openenv
+  - workflow
+  - compliance
+  - vendor-review

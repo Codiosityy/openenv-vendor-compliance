@@ -1,0 +1,320 @@
+{
+  "tasks": [
+    {
+      "id": "easy-clean-approve",
+      "title": "Clean SaaS Vendor Packet",
+      "difficulty": "easy",
+      "objective": "Review the dossier and decide whether the vendor should be approved, escalated, or rejected.",
+      "max_steps": 12,
+      "panels": [
+        {
+          "id": "overview",
+          "title": "Vendor Overview",
+          "summary": "Northwind Analytics LLC supplies dashboard software for internal planning teams.",
+          "details": [
+            "Legal name: Northwind Analytics LLC",
+            "Jurisdiction: Delaware, United States",
+            "Business address: 480 Hudson Street, New York, NY 10014",
+            "Primary contact: Priya Raman, Finance Operations Director"
+          ]
+        },
+        {
+          "id": "tax_form",
+          "title": "Tax Form",
+          "summary": "Signed W-9 on file.",
+          "details": [
+            "TIN ending: 4417",
+            "Entity classification: LLC taxed as corporation",
+            "Signer: Priya Raman",
+            "Form date: 2026-02-14"
+          ]
+        },
+        {
+          "id": "bank_letter",
+          "title": "Bank Confirmation Letter",
+          "summary": "Bank account ownership matches the legal entity.",
+          "details": [
+            "Bank: Chase Commercial Banking",
+            "Account owner: Northwind Analytics LLC",
+            "Letter signed by branch operations manager",
+            "Verified date: 2026-02-18"
+          ]
+        },
+        {
+          "id": "beneficial_owners",
+          "title": "Beneficial Owners",
+          "summary": "Ownership disclosure is complete and internally consistent.",
+          "details": [
+            "Maya Chen - 60% managing member",
+            "No other individual owns more than 25%",
+            "Control person: Maya Chen",
+            "Disclosure form signed: 2026-02-14"
+          ]
+        },
+        {
+          "id": "sanctions_screen",
+          "title": "Sanctions Screening",
+          "summary": "No sanctions or watchlist hits returned.",
+          "details": [
+            "Provider: LexScreen v4",
+            "Result: No exact or fuzzy matches above alert threshold",
+            "Jurisdictions checked: OFAC, UK HMT, EU",
+            "Screening timestamp: 2026-02-19T13:20:00Z"
+          ]
+        },
+        {
+          "id": "notes",
+          "title": "Analyst Notes",
+          "summary": "Prior review found no concerns.",
+          "details": [
+            "Requested service is low-risk analytics software.",
+            "Supporting documents were complete on first submission.",
+            "No manual escalation requested by procurement."
+          ]
+        },
+        {
+          "id": "policy",
+          "title": "Policy Excerpt",
+          "summary": "Approval is allowed when identity, ownership, banking, and sanctions checks are clean.",
+          "details": [
+            "Approve when legal entity and bank ownership align.",
+            "Escalate if a key document is missing or materially inconsistent.",
+            "Reject if a sanctions exact match is corroborated."
+          ]
+        }
+      ],
+      "grader": {
+        "correct_decision": "approve",
+        "required_findings": [],
+        "severe_false_findings": [
+          "missing_required_doc",
+          "bank_owner_mismatch",
+          "sanctions_exact_match",
+          "ubo_inconsistency"
+        ],
+        "required_targets": [
+          "overview",
+          "tax_form",
+          "bank_letter",
+          "beneficial_owners",
+          "sanctions_screen",
+          "policy"
+        ],
+        "critical_targets": [
+          "overview",
+          "tax_form",
+          "bank_letter",
+          "beneficial_owners",
+          "sanctions_screen",
+          "policy"
+        ]
+      }
+    },
+    {
+      "id": "medium-bank-mismatch",
+      "title": "Bank Ownership Mismatch",
+      "difficulty": "medium",
+      "objective": "Review the vendor packet and identify whether the payment instructions require escalation.",
+      "max_steps": 12,
+      "panels": [
+        {
+          "id": "overview",
+          "title": "Vendor Overview",
+          "summary": "Silverline Freight Systems provides route planning software.",
+          "details": [
+            "Legal name: Silverline Freight Systems Inc.",
+            "Jurisdiction: Texas, United States",
+            "Business address: 8901 Orion Park, Dallas, TX 75201",
+            "Primary contact: Elena Ortiz, Controller"
+          ]
+        },
+        {
+          "id": "tax_form",
+          "title": "Tax Form",
+          "summary": "Signed W-9 is present.",
+          "details": [
+            "TIN ending: 9082",
+            "Signer: Elena Ortiz",
+            "Form date: 2026-03-01",
+            "Federal tax classification: C Corporation"
+          ]
+        },
+        {
+          "id": "bank_letter",
+          "title": "Bank Confirmation Letter",
+          "summary": "Account owner does not match the legal vendor name.",
+          "details": [
+            "Bank: Plains National",
+            "Account owner: Skyline Logistics Holdings LLC",
+            "Vendor requested remittance to the attached account",
+            "Letter date: 2026-03-02"
+          ]
+        },
+        {
+          "id": "beneficial_owners",
+          "title": "Beneficial Owners",
+          "summary": "Ownership disclosure appears complete.",
+          "details": [
+            "Luis Romero - 55%",
+            "Nadia Lee - 45%",
+            "Control person: Luis Romero"
+          ]
+        },
+        {
+          "id": "sanctions_screen",
+          "title": "Sanctions Screening",
+          "summary": "No sanctions hits returned.",
+          "details": [
+            "Result: Clear",
+            "Jurisdictions checked: OFAC, UK HMT, EU",
+            "Timestamp: 2026-03-03T09:15:00Z"
+          ]
+        },
+        {
+          "id": "notes",
+          "title": "Analyst Notes",
+          "summary": "Procurement flagged a possible remittance issue.",
+          "details": [
+            "The requested account name differs from the contracting entity.",
+            "No parent-company payment exception was approved.",
+            "Escalation required before vendor activation if ownership mismatch persists."
+          ]
+        },
+        {
+          "id": "policy",
+          "title": "Policy Excerpt",
+          "summary": "Payment instructions must align with the contracted entity unless compliance approves an exception.",
+          "details": [
+            "Escalate when bank account ownership differs from the legal vendor name.",
+            "Do not approve onboarding until the discrepancy is resolved or exceptioned.",
+            "Reject only for prohibited-party or fraud indicators."
+          ]
+        }
+      ],
+      "grader": {
+        "correct_decision": "escalate",
+        "required_findings": [
+          "bank_owner_mismatch"
+        ],
+        "severe_false_findings": [
+          "sanctions_exact_match",
+          "ubo_inconsistency"
+        ],
+        "required_targets": [
+          "overview",
+          "bank_letter"
+        ],
+        "critical_targets": [
+          "overview",
+          "bank_letter",
+          "policy"
+        ]
+      }
+    },
+    {
+      "id": "hard-sanctioned-ubo-reject",
+      "title": "Sanctioned Beneficial Owner",
+      "difficulty": "hard",
+      "objective": "Determine whether the vendor should be rejected after reviewing ownership, sanctions, and corroborating notes.",
+      "max_steps": 12,
+      "panels": [
+        {
+          "id": "overview",
+          "title": "Vendor Overview",
+          "summary": "Helios Maritime Procurement Ltd. requests onboarding for sourcing support.",
+          "details": [
+            "Jurisdiction: Cyprus",
+            "Registered address: 14 Leoforos Athinon, Limassol 3105",
+            "Primary contact: Daria Petrov, Operations Lead",
+            "Service requested: ship component sourcing"
+          ]
+        },
+        {
+          "id": "tax_form",
+          "title": "Tax Form",
+          "summary": "Corporate registration and tax certificate were supplied.",
+          "details": [
+            "Registration number: CY-442817",
+            "Tax certificate date: 2026-01-29",
+            "Signer: Daria Petrov"
+          ]
+        },
+        {
+          "id": "bank_letter",
+          "title": "Bank Confirmation Letter",
+          "summary": "Bank ownership aligns with the legal entity.",
+          "details": [
+            "Bank: Mediterranean Trade Bank",
+            "Account owner: Helios Maritime Procurement Ltd.",
+            "Letter date: 2026-01-30"
+          ]
+        },
+        {
+          "id": "beneficial_owners",
+          "title": "Beneficial Owners",
+          "summary": "Disclosure lists a controlling shareholder not mentioned in onboarding notes.",
+          "details": [
+            "Sergei Volkov - 55% controlling shareholder",
+            "Irina Kostas - 45%",
+            "Control person: Sergei Volkov",
+            "No alternate trade names declared"
+          ]
+        },
+        {
+          "id": "sanctions_screen",
+          "title": "Sanctions Screening",
+          "summary": "Exact sanctions match returned for the controlling shareholder.",
+          "details": [
+            "OFAC exact match: Sergei Volkov",
+            "Date of birth and passport country align with disclosure file",
+            "Screening confidence: 0.99",
+            "Manual analyst review recommended"
+          ]
+        },
+        {
+          "id": "notes",
+          "title": "Analyst Notes",
+          "summary": "Manual review corroborates the sanctions alert.",
+          "details": [
+            "Public registry links Sergei Volkov to the disclosed ownership stake.",
+            "The vendor omitted a prior alias used in shipping records.",
+            "Compliance policy indicates rejection when ownership is tied to a confirmed sanctions hit."
+          ]
+        },
+        {
+          "id": "policy",
+          "title": "Policy Excerpt",
+          "summary": "Confirmed exact sanctions matches tied to controlling ownership require rejection.",
+          "details": [
+            "Reject when an exact sanctions hit is corroborated by ownership evidence.",
+            "Escalation is insufficient when the prohibited party is the controlling shareholder.",
+            "Document both the sanctions hit and the ownership inconsistency in the case file."
+          ]
+        }
+      ],
+      "grader": {
+        "correct_decision": "reject",
+        "required_findings": [
+          "sanctions_exact_match",
+          "ubo_inconsistency"
+        ],
+        "severe_false_findings": [
+          "missing_required_doc"
+        ],
+        "required_targets": [
+          "beneficial_owners",
+          "sanctions_screen",
+          "notes",
+          "policy"
+        ],
+        "critical_targets": [
+          "beneficial_owners",
+          "sanctions_screen",
+          "notes",
+          "policy"
+        ]
+      }
+    }
+  ]
+}
+
