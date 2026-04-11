@@ -36,8 +36,10 @@ STDOUT FORMAT
 import asyncio
 import json
 import os
+import sys
 import textwrap
-from typing import Any, List, Optional
+import traceback
+from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
 
@@ -62,7 +64,7 @@ MAX_TOKENS = 300
 # System prompt
 # ---------------------------------------------------------------------------
 SYSTEM_PROMPT = textwrap.dedent(
-    """
+    """\
     You are an operations analyst reviewing vendor onboarding dossiers.
     Return exactly one JSON object matching this schema:
     {
@@ -108,7 +110,7 @@ def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> No
 # ---------------------------------------------------------------------------
 # Prompt construction
 # ---------------------------------------------------------------------------
-def _build_user_prompt(observation: dict[str, Any]) -> str:
+def _build_user_prompt(observation: Dict[str, Any]) -> str:
     return json.dumps(
         {
             "task_id": observation.get("task_id"),
@@ -133,7 +135,7 @@ def _build_user_prompt(observation: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 # Fallback heuristic (used when LLM call fails)
 # ---------------------------------------------------------------------------
-def _fallback_action(observation: dict[str, Any]) -> VendorOnboardingAction:
+def _fallback_action(observation: Dict[str, Any]) -> VendorOnboardingAction:
     unopened = [
         t
         for t in observation.get("available_targets", [])
@@ -152,7 +154,7 @@ def _fallback_action(observation: dict[str, Any]) -> VendorOnboardingAction:
 def _request_action(
     client: OpenAI,
     model: str,
-    observation: dict[str, Any],
+    observation: Dict[str, Any],
 ) -> VendorOnboardingAction:
     user_prompt = _build_user_prompt(observation)
     try:
@@ -166,7 +168,7 @@ def _request_action(
                 {"role": "user", "content": user_prompt},
             ],
         )
-        raw_text = response.choices[0].message.content or "{}"
+        raw_text = (response.choices[0].message.content or "{}").strip()
         parsed = json.loads(raw_text)
         return VendorOnboardingAction.model_validate(parsed)
     except Exception as exc:
@@ -189,86 +191,169 @@ def _action_str(action: VendorOnboardingAction) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Safe metadata extraction
+# ---------------------------------------------------------------------------
+def _extract_score_from_result(result: Any) -> Optional[float]:
+    """Safely extract the final task score from a step result's observation metadata."""
+    try:
+        obs = result.observation
+        # Try accessing metadata as an attribute (Pydantic field)
+        metadata = getattr(obs, "metadata", None)
+        if metadata is None:
+            return None
+        if not isinstance(metadata, dict):
+            # If metadata is a Pydantic model, try model_dump
+            try:
+                metadata = metadata.model_dump()
+            except Exception:
+                return None
+        info = metadata.get("info", {})
+        if not isinstance(info, dict):
+            return None
+        task_grade = info.get("task_grade", {})
+        if not isinstance(task_grade, dict):
+            return None
+        score = task_grade.get("final_score")
+        if score is not None:
+            return float(score)
+    except Exception as exc:
+        print(f"[DEBUG] Could not extract score from metadata: {exc}", flush=True)
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Connect to environment
 # ---------------------------------------------------------------------------
 async def _connect_env() -> VendorOnboardingEnv:
+    """Connect to the environment, trying Docker image first, then base URL."""
     if IMAGE_NAME:
         return await VendorOnboardingEnv.from_docker_image(IMAGE_NAME)
 
-    base_url = os.getenv("VENDOR_ONBOARDING_BASE_URL", "http://localhost:8000")
+    base_url = os.getenv("VENDOR_ONBOARDING_BASE_URL", "http://localhost:7860")
     env = VendorOnboardingEnv(base_url=base_url)
     await env.connect()
     return env
 
 
 # ---------------------------------------------------------------------------
+# Run a single task episode
+# ---------------------------------------------------------------------------
+async def _run_task(
+    env: Any,
+    client: OpenAI,
+    task_id: str,
+) -> None:
+    """Run one task episode with full error handling and guaranteed [END] output."""
+    rewards: List[float] = []
+    steps_taken = 0
+    score = 0.0
+    success = False
+
+    log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
+
+    try:
+        result = await env.reset(task_id=task_id)
+
+        for step in range(1, MAX_STEPS + 1):
+            # Check done flag safely
+            done_flag = getattr(result, "done", False)
+            if done_flag:
+                # Extract score from the terminal observation
+                extracted = _extract_score_from_result(result)
+                if extracted is not None:
+                    score = extracted
+                break
+
+            # Get observation as dict safely
+            obs = result.observation
+            try:
+                obs_dict = obs.model_dump()
+            except Exception:
+                try:
+                    obs_dict = dict(obs)
+                except Exception:
+                    obs_dict = {}
+
+            # Request action from LLM (with fallback)
+            action = _request_action(client, MODEL_NAME, obs_dict)
+
+            # Execute the step
+            result = await env.step(action)
+
+            # Extract reward safely
+            reward = 0.0
+            try:
+                r = getattr(result, "reward", None)
+                if r is not None:
+                    reward = float(r)
+            except (TypeError, ValueError):
+                pass
+
+            done = getattr(result, "done", False)
+            error = None
+
+            rewards.append(reward)
+            steps_taken = step
+
+            log_step(
+                step=step,
+                action=_action_str(action),
+                reward=reward,
+                done=done,
+                error=error,
+            )
+
+            if done:
+                # Try to extract score from terminal observation metadata
+                extracted = _extract_score_from_result(result)
+                if extracted is not None:
+                    score = extracted
+                break
+
+        # If we didn't get a score from metadata, compute from rewards
+        if score == 0.0 and rewards:
+            score = min(max(sum(rewards), 0.0), 1.0)
+
+        # Clamp score
+        score = min(max(score, 0.0), 1.0)
+        success = score > 0.0
+
+    except Exception as exc:
+        print(f"[DEBUG] Task {task_id} error: {exc}", flush=True)
+        traceback.print_exc(file=sys.stdout)
+
+    finally:
+        log_end(
+            success=success,
+            steps=steps_taken,
+            score=score,
+            rewards=rewards,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 async def main() -> None:
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
-    env = await _connect_env()
-
-    task_ids = get_task_ids()
-
+    env = None
     try:
+        client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+        env = await _connect_env()
+        task_ids = get_task_ids()
+
         for task_id in task_ids:
-            rewards: List[float] = []
-            steps_taken = 0
-            score = 0.0
-            success = False
+            await _run_task(env, client, task_id)
 
-            log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
-
-            try:
-                result = await env.reset(task_id=task_id)
-
-                for step in range(1, MAX_STEPS + 1):
-                    if result.done:
-                        break
-
-                    obs_dict = result.observation.model_dump()
-                    action = _request_action(client, MODEL_NAME, obs_dict)
-                    result = await env.step(action)
-
-                    reward = result.reward or 0.0
-                    done = result.done
-                    error = None
-
-                    rewards.append(float(reward))
-                    steps_taken = step
-
-                    log_step(
-                        step=step,
-                        action=_action_str(action),
-                        reward=float(reward),
-                        done=done,
-                        error=error,
-                    )
-
-                    if done:
-                        info = result.observation.metadata.get("info", {})
-                        score = float(
-                            info.get("task_grade", {}).get("final_score", 0.0)
-                        )
-                        break
-
-                # Clamp score to [0, 1]
-                score = min(max(score, 0.0), 1.0)
-                success = score > 0.0
-
-            finally:
-                log_end(
-                    success=success,
-                    steps=steps_taken,
-                    score=score,
-                    rewards=rewards,
-                )
+    except Exception as exc:
+        print(f"[DEBUG] Fatal error in main: {exc}", flush=True)
+        traceback.print_exc(file=sys.stdout)
 
     finally:
-        try:
-            await env.close()
-        except Exception as e:
-            print(f"[DEBUG] env.close() error (container cleanup): {e}", flush=True)
+        if env is not None:
+            try:
+                await env.close()
+            except Exception as e:
+                print(f"[DEBUG] env.close() error (container cleanup): {e}", flush=True)
 
 
 if __name__ == "__main__":
