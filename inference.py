@@ -195,7 +195,7 @@ async def _connect_env() -> VendorOnboardingEnv:
     if IMAGE_NAME:
         return await VendorOnboardingEnv.from_docker_image(IMAGE_NAME)
 
-    base_url = os.getenv("VENDOR_ONBOARDING_BASE_URL", "http://localhost:8000")
+    base_url = os.getenv("VENDOR_ONBOARDING_BASE_URL", "http://localhost:7860")
     env = VendorOnboardingEnv(base_url=base_url)
     await env.connect()
     return env
@@ -205,8 +205,12 @@ async def _connect_env() -> VendorOnboardingEnv:
 # Main
 # ---------------------------------------------------------------------------
 async def main() -> None:
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
-    env = await _connect_env()
+    try:
+        client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY or "dummy-key")
+        env = await _connect_env()
+    except Exception as e:
+        print(f"[DEBUG] Failed to initialize client or connect to env: {e}", flush=True)
+        return
 
     task_ids = get_task_ids()
 
@@ -220,7 +224,12 @@ async def main() -> None:
             log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
 
             try:
-                result = await env.reset(task_id=task_id)
+                try:
+                    result = await env.reset(task_id=task_id)
+                except Exception as e:
+                    print(f"[DEBUG] Failed to reset task {task_id}: {e}", flush=True)
+                    log_end(success=False, steps=0, score=0.0, rewards=[])
+                    continue
 
                 for step in range(1, MAX_STEPS + 1):
                     if result.done:
@@ -228,7 +237,13 @@ async def main() -> None:
 
                     obs_dict = result.observation.model_dump()
                     action = _request_action(client, MODEL_NAME, obs_dict)
-                    result = await env.step(action)
+                    
+                    try:
+                        result = await env.step(action)
+                    except Exception as exc:
+                        print(f"[DEBUG] Environment step failed: {exc}", flush=True)
+                        log_step(step, _action_str(action), 0.0, True, str(exc))
+                        break
 
                     reward = result.reward or 0.0
                     done = result.done
@@ -246,10 +261,11 @@ async def main() -> None:
                     )
 
                     if done:
-                        info = result.observation.metadata.get("info", {})
-                        score = float(
-                            info.get("task_grade", {}).get("final_score", 0.0)
-                        )
+                        try:
+                            info = result.observation.metadata.get("info", {})
+                            score = float(info.get("task_grade", {}).get("final_score", 0.0))
+                        except Exception:
+                            score = 0.0
                         break
 
                 # Clamp score to [0, 1]
